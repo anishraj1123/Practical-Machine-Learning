@@ -1,0 +1,121 @@
+---
+title: "Practical Machine Learning-Prediction Assignment Writeup"
+author: "Anish Raj"
+date: "27/10/2019"
+output:
+  html_document: 
+  pdf_document: default
+  keep_md: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+This project is being carried out in completion of the "Practical Machine Learning" Coursera course.
+
+A dataset of measurement data has been provided by the course.  The dataset is comprised of measurements of acceleration made by individuals who are carrying out one of five classes of physical activity.  According to this project's instructions, the measurements are made using devices worn on the belt, forearm, arm, and a dumbbell.  
+
+Additional information the dataset is available here: <http://groupware.les.inf.puc-rio.br/har>
+
+My task is to create a model that can predict the which class of activity is being done.
+
+## Loading relevant libraries
+
+```{r lib}
+library(knitr)
+library(caret)
+library(rattle)
+library(rpart)
+library(ggplot2)
+library(randomForest)
+set.seed(1234)
+```
+
+## Data Loading & Cleaning
+```{r pml}
+train <- read.csv("./pml-training.csv")
+test <- read.csv("./pml-testing.csv")
+dim(train);dim(test)
+```
+
+### Cleaning data
+Data cleaning using the following criterias :
+- Remove columns with (>95%) NAs
+- Remove columns with Near Zero variance
+- Remove columns with only information and no contribution 
+
+```{r clean}
+# remove columns that are mostly NA
+NAFlag <- sapply(train, function(x) mean(is.na(x))) > 0.95
+train <- train[, NAFlag==FALSE]
+test <- test[, NAFlag==FALSE]
+dim(train);dim(test)
+
+# remove columns with Nearly Zero Variance
+NZV <- nearZeroVar(train)
+train <- train[, -NZV]
+test <- test[, -NZV]
+dim(train);dim(test)
+
+# remove information only columns (columns 1 to 5)
+train <- train[, -(1:5)]
+test <- test[, -(1:5)]
+dim(train);dim(test)
+```
+
+### Partitioning the training data for cross validation (using 60% for training and 40% for validation)
+
+```{r part}
+set.seed(1234)
+inTrain <- createDataPartition(train$classe, p=0.6, list=FALSE)
+trainT <- train[inTrain,]
+trainV <- train[-inTrain,]
+dim(trainT);dim(trainV);dim(test)
+```
+
+## Prediction model buidling using Decision Tree, Random Forest & Generalized Boosted Model(GBM)
+
+```{r model}
+## Model using Decision Tree
+set.seed(1234)
+modFitDT  <- rpart(classe ~ ., data=trainT, method="class")
+fancyRpartPlot(modFitDT)
+
+## prediction using validation set on Decison Tree model
+prediction <- predict(modFitDT, newdata = trainV,type = "class")
+confusionMatrix(prediction, trainV$classe)
+
+## Model using Random Forest
+set.seed(1234)
+modFitRF <- randomForest(classe ~ ., data = trainT)
+modFitRF
+
+## prediction using validation set on Random Forest model
+prediction <- predict(modFitRF, newdata = trainV)
+confusionMatrix(prediction, trainV$classe)
+
+## Model using Generalized Boosted Model(GBM)
+set.seed(1234)
+controlGBM <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+modFitGBM <- train(classe ~ .,method="gbm",data = trainT,verbose=FALSE,trControl = controlGBM)
+modFitGBM$finalModel
+
+## prediction using validation set on Generalized Boosted Model(GBM)
+prediction <- predict(modFitGBM, newdata = trainV)
+confusionMatrix(prediction, trainV$classe)
+```
+
+## Model Selection & Prediction on test data provided
+
+The accuracy of the 3 models are as follows : Decision Tree : 0.7239, Random Forest : 0.9964 , Generalized Boosted Model(GBM) : 0.9871
+
+Random forest is chosen as the final model for prediction based on highest accuracy and for Random Forest model OOB estimate of  error rate (using the train subset in training set) is 0.44% and Out of sample error (using the validaton subset in the training set) is 0.36%
+
+### Prediction on the final test data having 20 samples is as follows
+
+```{r predict}
+predictiontest <- predict(modFitRF, newdata=test)
+predictiontest
+```
